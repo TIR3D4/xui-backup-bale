@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="x-ui-bale.png" alt="XUI Backup to Bale Bot Banner" width="100%">
+</p>
+
 # XUI Backup to Bale Bot
 
 ### ارسال خودکار بکاپ دیتابیس X-UI و 3X-UI به ربات بله
