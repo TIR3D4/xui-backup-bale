@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_PATH="$(readlink -f "$0")"
+INSTALL_PATH="/usr/local/bin/bale_xui_backup.sh"
 CONFIG_FILE="/etc/bale_xui_backup.conf"
 LOCK_FILE="/tmp/bale_xui_backup.lock"
 LOG_FILE="/tmp/bale_xui_backup.log"
@@ -71,6 +71,26 @@ read_required() {
   done
 }
 
+read_backup_name() {
+  local value=""
+
+  while true; do
+    read -rp "Enter backup file name, example xui_backup: " value
+
+    if [ -z "$value" ]; then
+      warn "This field cannot be empty."
+      continue
+    fi
+
+    if [[ "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      printf '%s' "$value"
+      return 0
+    fi
+
+    warn "Use only English letters, numbers, dot, dash or underscore."
+  done
+}
+
 read_interval() {
   local value=""
 
@@ -84,6 +104,31 @@ read_interval() {
 
     warn "Please enter a number between 1 and 59."
   done
+}
+
+install_self() {
+  local current_source=""
+
+  if [ "$(id -u)" -ne 0 ]; then
+    error "Please run this script as root or with sudo."
+    exit 1
+  fi
+
+  current_source="${BASH_SOURCE[0]}"
+
+  if [ -f "$current_source" ]; then
+    if [ "$(readlink -f "$current_source" 2>/dev/null || echo "$current_source")" != "$INSTALL_PATH" ]; then
+      cat "$current_source" > "$INSTALL_PATH"
+      chmod +x "$INSTALL_PATH"
+      ok "Script installed to: $INSTALL_PATH"
+    else
+      chmod +x "$INSTALL_PATH"
+    fi
+  else
+    error "Cannot detect script source."
+    error "Please save this script as a file and run it again."
+    exit 1
+  fi
 }
 
 save_config() {
@@ -120,6 +165,7 @@ show_config() {
   echo "Backup name : $BACKUP_NAME"
   echo "Config file : $CONFIG_FILE"
   echo "Log file    : $LOG_FILE"
+  echo "Run file    : $INSTALL_PATH"
 }
 
 install_cron() {
@@ -143,16 +189,22 @@ install_cron() {
   echo
   CHAT_ID="$(read_required "Enter destination CHAT_ID: ")"
   echo
-  BACKUP_NAME="$(read_required "Enter backup file name, example xui_backup: ")"
+  BACKUP_NAME="$(read_backup_name)"
   echo
   INTERVAL_MINUTES="$(read_interval)"
   echo
 
+  install_self
   save_config "$BOT_TOKEN" "$CHAT_ID" "$BACKUP_NAME"
-  chmod +x "$SCRIPT_PATH"
 
-  CRON_LINE="*/${INTERVAL_MINUTES} * * * * $SCRIPT_PATH --run >$LOG_FILE 2>&1"
-  CURRENT_CRON="$(crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" || true)"
+  if [ "$INTERVAL_MINUTES" -eq 1 ]; then
+    CRON_TIME="* * * * *"
+  else
+    CRON_TIME="*/${INTERVAL_MINUTES} * * * *"
+  fi
+
+  CRON_LINE="${CRON_TIME} /usr/bin/env bash ${INSTALL_PATH} --run >${LOG_FILE} 2>&1"
+  CURRENT_CRON="$(crontab -l 2>/dev/null | grep -v "$INSTALL_PATH" | grep -v "bale_xui_backup.sh" || true)"
 
   {
     echo "$CURRENT_CRON"
@@ -164,6 +216,7 @@ install_cron() {
   echo "Interval    : every $INTERVAL_MINUTES minute(s)"
   echo "Config file : $CONFIG_FILE"
   echo "Log file    : $LOG_FILE"
+  echo "Run file    : $INSTALL_PATH"
   echo
 }
 
@@ -235,7 +288,7 @@ uninstall_cron() {
 
   title
 
-  CURRENT_CRON="$(crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" || true)"
+  CURRENT_CRON="$(crontab -l 2>/dev/null | grep -v "$INSTALL_PATH" | grep -v "bale_xui_backup.sh" || true)"
   echo "$CURRENT_CRON" | crontab -
 
   ok "Cron job has been removed."
