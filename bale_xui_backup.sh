@@ -106,6 +106,22 @@ read_interval() {
   done
 }
 
+detect_server_ip() {
+  local ip=""
+
+  ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}' || true)"
+
+  if [ -z "$ip" ]; then
+    ip="$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i; exit}}' || true)"
+  fi
+
+  if [ -z "$ip" ]; then
+    ip="unknown"
+  fi
+
+  printf '%s' "$ip"
+}
+
 install_self() {
   local current_source=""
 
@@ -163,6 +179,7 @@ show_config() {
   echo "Bot token   : ${BOT_TOKEN:0:8}********"
   echo "Chat ID     : $CHAT_ID"
   echo "Backup name : $BACKUP_NAME"
+  echo "Server IP   : $(detect_server_ip)"
   echo "Config file : $CONFIG_FILE"
   echo "Log file    : $LOG_FILE"
   echo "Run file    : $INSTALL_PATH"
@@ -173,6 +190,7 @@ install_cron() {
   require_command zip
   require_command curl
   require_command flock
+  require_command ip
 
   title
 
@@ -214,6 +232,7 @@ install_cron() {
   ok "Cron job has been enabled."
   echo
   echo "Interval    : every $INTERVAL_MINUTES minute(s)"
+  echo "Server IP   : $(detect_server_ip)"
   echo "Config file : $CONFIG_FILE"
   echo "Log file    : $LOG_FILE"
   echo "Run file    : $INSTALL_PATH"
@@ -224,6 +243,7 @@ run_backup() {
   require_command zip
   require_command curl
   require_command flock
+  require_command ip
 
   if [ ! -f "$CONFIG_FILE" ]; then
     error "Config file not found. Run setup first with --install."
@@ -243,6 +263,7 @@ run_backup() {
   NOW="$(date '+%Y-%m-%d %H:%M:%S')"
   SAFE_DATE="$(date '+%Y-%m-%d_%H-%M-%S')"
   ZIP_FILE="${BACKUP_DIR}/${BACKUP_NAME}_${SAFE_DATE}.zip"
+  SERVER_IP="$(detect_server_ip)"
 
   EXISTING_FILES=()
 
@@ -261,6 +282,7 @@ run_backup() {
   zip -j "$ZIP_FILE" "${EXISTING_FILES[@]}" >/dev/null
 
   CAPTION="Backup file: ${BACKUP_NAME}
+Server IP: ${SERVER_IP}
 Date: ${NOW}"
 
   info "Uploading backup to Bale..."
